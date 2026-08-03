@@ -84,16 +84,14 @@ export default function OffersListPage() {
                   <th className="p-4 text-left">Başlık</th>
                   <th className="p-4 text-right">Toplam</th>
                   <th className="p-4 text-center">Tarih</th>
+                  <th className="p-4 text-center">İşlemler</th>
                 </tr>
               </thead>
 
               <tbody>
                 {loading && (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="text-center p-8"
-                    >
+                    <td colSpan={6} className="text-center p-8">
                       Yükleniyor...
                     </td>
                   </tr>
@@ -101,10 +99,7 @@ export default function OffersListPage() {
 
                 {!loading && offers.length === 0 && (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="text-center p-8"
-                    >
+                    <td colSpan={6} className="text-center p-8">
                       Henüz teklif bulunmuyor.
                     </td>
                   </tr>
@@ -129,16 +124,22 @@ export default function OffersListPage() {
                       </td>
 
                       <td className="p-4 text-right font-semibold">
-                        ₺
-                        {Number(
-                          offer.total
-                        ).toLocaleString("tr-TR")}
+                        ₺{Number(offer.total).toLocaleString("tr-TR")}
                       </td>
 
                       <td className="p-4 text-center">
                         {new Date(
                           offer.created_at
                         ).toLocaleDateString("tr-TR")}
+                      </td>
+
+                      <td className="p-4 text-center">
+                        <Link
+                          href={`/offers/${offer.id}`}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                        >
+                          Gör
+                        </Link>
                       </td>
                     </tr>
                   ))}
