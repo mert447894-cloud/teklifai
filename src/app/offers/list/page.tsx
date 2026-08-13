@@ -8,60 +8,129 @@ import { supabase } from "../../lib/supabase";
 import Navbar from "../../components/Navbar";
 import Sidebar from "../../components/Sidebar";
 
+type Customer = {
+  name: string;
+  company: string;
+};
+
 type Offer = {
   id: number;
   title: string;
   total: number;
   created_at: string;
-  customers: {
-    name: string;
-    company: string;
-  } | null;
+  status: string | null;
+  customers: Customer[] | null;
 };
+
+const statuses = [
+  "Taslak",
+  "Gönderildi",
+  "Onaylandı",
+  "Reddedildi",
+];
 
 export default function OffersListPage() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [updatingId, setUpdatingId] = useState<number | null>(
+    null
+  );
 
   const loadOffers = useCallback(async () => {
     setLoading(true);
-    setErrorMessage("");
 
     const { data, error } = await supabase
       .from("offers")
-      .select(
-        `
+      .select(`
         id,
         title,
         total,
         created_at,
+        status,
         customers (
           name,
           company
         )
-      `
-      )
-      .order("created_at", { ascending: false });
+      `)
+      .order("created_at", {
+        ascending: false,
+      });
 
     if (error) {
-      console.error("Teklifler yüklenirken hata:", error);
-
-      setErrorMessage(error.message);
-      setOffers([]);
+      alert(error.message);
       setLoading(false);
       return;
     }
 
-    console.log("Yüklenen teklifler:", data);
-
-    setOffers((data as Offer[]) ?? []);
+    setOffers(data ?? []);
     setLoading(false);
   }, []);
 
   useEffect(() => {
     loadOffers();
   }, [loadOffers]);
+
+  async function updateStatus(
+    offerId: number,
+    status: string
+  ) {
+    setUpdatingId(offerId);
+
+    const { error } = await supabase
+      .from("offers")
+      .update({
+        status,
+      })
+      .eq("id", offerId);
+
+    if (error) {
+      alert(
+        "Durum güncellenemedi: " +
+          error.message
+      );
+
+      setUpdatingId(null);
+      return;
+    }
+
+    setOffers((currentOffers) =>
+      currentOffers.map((offer) =>
+        offer.id === offerId
+          ? {
+              ...offer,
+              status,
+            }
+          : offer
+      )
+    );
+
+    setUpdatingId(null);
+  }
+
+  function getStatusClass(
+    status: string | null
+  ) {
+    switch (status) {
+      case "Gönderildi":
+        return "bg-yellow-100 text-yellow-700";
+
+      case "Onaylandı":
+        return "bg-green-100 text-green-700";
+
+      case "Reddedildi":
+        return "bg-red-100 text-red-700";
+
+      case "Taslak":
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  }
+
+  function getCustomer(
+    customers: Customer[] | null
+  ) {
+    return customers?.[0] ?? null;
+  }
 
   return (
     <>
@@ -72,43 +141,17 @@ export default function OffersListPage() {
 
         <main className="flex-1 bg-gray-100 min-h-screen p-8">
           <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-4xl font-bold text-blue-600">
-                Teklifler
-              </h1>
+            <h1 className="text-4xl font-bold text-blue-600">
+              Teklifler
+            </h1>
 
-              <p className="text-gray-500 mt-2">
-                Oluşturduğunuz tüm teklifler burada görünür.
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={loadOffers}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-5 py-3 rounded-lg"
-              >
-                ↻ Yenile
-              </button>
-
-              <Link
-                href="/offers"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-lg"
-              >
-                + Yeni Teklif
-              </Link>
-            </div>
+            <Link
+              href="/offers"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-lg"
+            >
+              + Yeni Teklif
+            </Link>
           </div>
-
-          {errorMessage && (
-            <div className="mb-6 bg-red-100 border border-red-300 text-red-700 rounded-lg p-4">
-              <strong>Teklifler yüklenemedi.</strong>
-
-              <p className="mt-1">
-                {errorMessage}
-              </p>
-            </div>
-          )}
 
           <div className="bg-white rounded-xl shadow overflow-hidden">
             <div className="overflow-x-auto">
@@ -136,6 +179,10 @@ export default function OffersListPage() {
                     </th>
 
                     <th className="p-4 text-center">
+                      Durum
+                    </th>
+
+                    <th className="p-4 text-center">
                       İşlemler
                     </th>
                   </tr>
@@ -145,105 +192,118 @@ export default function OffersListPage() {
                   {loading && (
                     <tr>
                       <td
-                        colSpan={6}
-                        className="text-center p-10 text-gray-500"
+                        colSpan={7}
+                        className="text-center p-8"
                       >
-                        Teklifler yükleniyor...
+                        Yükleniyor...
                       </td>
                     </tr>
                   )}
 
                   {!loading &&
-                    !errorMessage &&
                     offers.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
-                          className="text-center p-10"
+                          colSpan={7}
+                          className="text-center p-8 text-gray-500"
                         >
-                          <div className="text-gray-500">
-                            <div className="text-4xl mb-3">
-                              📄
-                            </div>
-
-                            <p className="font-semibold">
-                              Henüz teklif bulunmuyor.
-                            </p>
-
-                            <p className="text-sm mt-1">
-                              İlk teklifinizi oluşturmak için
-                              aşağıdaki butonu kullanabilirsiniz.
-                            </p>
-
-                            <Link
-                              href="/offers"
-                              className="inline-block mt-4 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg"
-                            >
-                              + Yeni Teklif Oluştur
-                            </Link>
-                          </div>
+                          Henüz teklif bulunmuyor.
                         </td>
                       </tr>
                     )}
 
                   {!loading &&
-                    !errorMessage &&
-                    offers.map((offer) => (
-                      <tr
-                        key={offer.id}
-                        className="border-t hover:bg-gray-50 transition"
-                      >
-                        <td className="p-4">
-                          {offer.customers?.name || "-"}
-                        </td>
+                    offers.map((offer) => {
+                      const customer =
+                        getCustomer(
+                          offer.customers
+                        );
 
-                        <td className="p-4">
-                          {offer.customers?.company || "-"}
-                        </td>
+                      const currentStatus =
+                        offer.status ||
+                        "Taslak";
 
-                        <td className="p-4 font-medium">
-                          {offer.title || "Başlıksız Teklif"}
-                        </td>
+                      return (
+                        <tr
+                          key={offer.id}
+                          className="border-t hover:bg-gray-50"
+                        >
+                          <td className="p-4">
+                            {customer?.name ||
+                              "-"}
+                          </td>
 
-                        <td className="p-4 text-right font-semibold">
-                          ₺
-                          {Number(
-                            offer.total
-                          ).toLocaleString("tr-TR", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </td>
+                          <td className="p-4">
+                            {customer?.company ||
+                              "-"}
+                          </td>
 
-                        <td className="p-4 text-center">
-                          {offer.created_at
-                            ? new Date(
-                                offer.created_at
-                              ).toLocaleDateString("tr-TR")
-                            : "-"}
-                        </td>
+                          <td className="p-4">
+                            {offer.title}
+                          </td>
 
-                        <td className="p-4 text-center">
-                          <Link
-                            href={`/offers/${offer.id}`}
-                            className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium"
-                          >
-                            Görüntüle
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
+                          <td className="p-4 text-right font-semibold">
+                            ₺
+                            {Number(
+                              offer.total
+                            ).toLocaleString(
+                              "tr-TR"
+                            )}
+                          </td>
+
+                          <td className="p-4 text-center">
+                            {new Date(
+                              offer.created_at
+                            ).toLocaleDateString(
+                              "tr-TR"
+                            )}
+                          </td>
+
+                          <td className="p-4 text-center">
+                            <select
+                              value={currentStatus}
+                              disabled={
+                                updatingId ===
+                                offer.id
+                              }
+                              onChange={(e) =>
+                                updateStatus(
+                                  offer.id,
+                                  e.target.value
+                                )
+                              }
+                              className={`px-3 py-2 rounded-lg font-semibold border-0 cursor-pointer ${getStatusClass(
+                                currentStatus
+                              )}`}
+                            >
+                              {statuses.map(
+                                (status) => (
+                                  <option
+                                    key={status}
+                                    value={status}
+                                  >
+                                    {status}
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </td>
+
+                          <td className="p-4 text-center">
+                            <Link
+                              href={`/offers/${offer.id}`}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                            >
+                              Gör
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
           </div>
-
-          {!loading && !errorMessage && offers.length > 0 && (
-            <div className="mt-4 text-sm text-gray-500">
-              Toplam{" "}
-              <strong>{offers.length}</strong>{" "}
-              teklif bulundu.
-            </div>
-          )}
         </main>
       </div>
     </>

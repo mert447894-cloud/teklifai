@@ -1,10 +1,20 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import {
+  use,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+
 import Link from "next/link";
 
 import { supabase } from "../../lib/supabase";
-import { generateOfferPdf } from "../../lib/pdf";
+
+import {
+  generateOfferPdf,
+  generateOfferPdfBase64,
+} from "../../lib/pdf";
 
 import Navbar from "../../components/Navbar";
 import Sidebar from "../../components/Sidebar";
@@ -20,6 +30,7 @@ type Offer = {
   valid_until?: string | null;
   vat_rate?: number | null;
   notes?: string | null;
+  status?: string | null;
 
   customers: {
     name: string;
@@ -48,25 +59,25 @@ export default function OfferDetailPage({
   const [offer, setOffer] = useState<Offer | null>(null);
   const [items, setItems] = useState<OfferItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const loadOffer = useCallback(async () => {
     setLoading(true);
 
-    const { data: offerData, error: offerError } = await supabase
-      .from("offers")
-      .select(
-        `
-        *,
-        customers (
-          name,
-          company,
-          phone,
-          email
-        )
-      `
-      )
-      .eq("id", id)
-      .single();
+    const { data: offerData, error: offerError } =
+      await supabase
+        .from("offers")
+        .select(`
+          *,
+          customers (
+            name,
+            company,
+            phone,
+            email
+          )
+        `)
+        .eq("id", id)
+        .single();
 
     if (offerError) {
       alert(offerError.message);
@@ -74,11 +85,12 @@ export default function OfferDetailPage({
       return;
     }
 
-    const { data: itemData, error: itemError } = await supabase
-      .from("offer_items")
-      .select("*")
-      .eq("offer_id", id)
-      .order("id");
+    const { data: itemData, error: itemError } =
+      await supabase
+        .from("offer_items")
+        .select("*")
+        .eq("offer_id", id)
+        .order("id");
 
     if (itemError) {
       alert(itemError.message);
@@ -95,12 +107,12 @@ export default function OfferDetailPage({
     loadOffer();
   }, [loadOffer]);
 
-  function handleGeneratePdf() {
+  function getPdfParams() {
     if (!offer) {
-      return;
+      return null;
     }
 
-    generateOfferPdf({
+    return {
       offerNo: offer.offer_no ?? `TKF-${offer.id}`,
       title: offer.title,
       createdAt: offer.created_at,
@@ -122,7 +134,150 @@ export default function OfferDetailPage({
       })),
 
       grandTotal: Number(offer.total),
-    });
+    };
+  }
+
+  async function handleGeneratePdf() {
+    const params = getPdfParams();
+
+    if (!params) {
+      return;
+    }
+
+    try {
+      await generateOfferPdf(params);
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "PDF oluşturulamadı."
+      );
+    }
+  }
+
+  async function handleSendEmail() {
+    if (!offer) {
+      return;
+    }
+
+    const email = offer.customers?.email?.trim();
+
+    if (!email) {
+      alert(
+        "Bu müşterinin kayıtlı e-posta adresi bulunmuyor."
+      );
+      return;
+    }
+
+    if (sendingEmail) {
+      return;
+    }
+
+    const params = getPdfParams();
+
+    if (!params) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `${email} adresine teklif PDF'si gönderilsin mi?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setSendingEmail(true);
+
+      const pdfBase64 =
+        await generateOfferPdfBase64(params);
+
+      const response = await fetch(
+        "/api/send-offer",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            to: email,
+            customerName:
+              offer.customers?.name ?? "",
+            offerNo:
+              offer.offer_no ??
+              `TKF-${offer.id}`,
+            title: offer.title,
+            pdfBase64,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+            "E-posta gönderilemedi."
+        );
+      }
+
+      const { error: statusError } =
+        await supabase
+          .from("offers")
+          .update({
+            status: "Gönderildi",
+          })
+          .eq("id", offer.id);
+
+      if (statusError) {
+        throw new Error(
+          `E-posta gönderildi ancak teklif durumu güncellenemedi: ${statusError.message}`
+        );
+      }
+
+      setOffer({
+        ...offer,
+        status: "Gönderildi",
+      });
+
+      alert(
+        "✅ Teklif PDF'si müşteriye e-posta ile gönderildi."
+      );
+    } catch (error) {
+      console.error(
+        "Email send error:",
+        error
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "E-posta gönderilemedi."
+      );
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
+  function getStatusClass(
+    status: string | null | undefined
+  ) {
+    switch (status) {
+      case "Onaylandı":
+        return "bg-green-100 text-green-700";
+
+      case "Gönderildi":
+        return "bg-yellow-100 text-yellow-700";
+
+      case "Reddedildi":
+        return "bg-red-100 text-red-700";
+
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
   }
 
   if (loading) {
@@ -176,7 +331,7 @@ export default function OfferDetailPage({
         <Sidebar />
 
         <main className="flex-1 bg-gray-100 min-h-screen p-8">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
             <div>
               <h1 className="text-4xl font-bold text-blue-600">
                 {offer.title}
@@ -191,12 +346,24 @@ export default function OfferDetailPage({
               {offer.offer_no && (
                 <p className="text-gray-500 mt-1">
                   Teklif No:{" "}
-                  <strong>{offer.offer_no}</strong>
+                  <strong>
+                    {offer.offer_no}
+                  </strong>
                 </p>
               )}
+
+              <div className="mt-3">
+                <span
+                  className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusClass(
+                    offer.status
+                  )}`}
+                >
+                  {offer.status || "Taslak"}
+                </span>
+              </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={handleGeneratePdf}
@@ -205,9 +372,31 @@ export default function OfferDetailPage({
                 📄 PDF Oluştur
               </button>
 
+              <button
+                type="button"
+                onClick={handleSendEmail}
+                disabled={sendingEmail}
+                className={`text-white px-5 py-3 rounded-lg font-semibold ${
+                  sendingEmail
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
+              >
+                {sendingEmail
+                  ? "📨 Gönderiliyor..."
+                  : "📧 E-posta Gönder"}
+              </button>
+
+              <Link
+                href={`/offers/${offer.id}/edit`}
+                className="bg-gray-700 hover:bg-gray-800 text-white px-5 py-3 rounded-lg"
+              >
+                ✏️ Düzenle
+              </Link>
+
               <Link
                 href="/offers/list"
-                className="bg-gray-700 hover:bg-gray-800 text-white px-5 py-3 rounded-lg"
+                className="bg-gray-500 hover:bg-gray-600 text-white px-5 py-3 rounded-lg"
               >
                 ← Teklif Listesi
               </Link>
@@ -257,7 +446,10 @@ export default function OfferDetailPage({
                 {offer.vat_rate !== null &&
                   offer.vat_rate !== undefined && (
                     <p className="text-gray-500 mt-2">
-                      KDV: %{Number(offer.vat_rate)}
+                      KDV: %
+                      {Number(
+                        offer.vat_rate
+                      )}
                     </p>
                   )}
 
@@ -266,7 +458,9 @@ export default function OfferDetailPage({
                     Geçerlilik:{" "}
                     {new Date(
                       offer.valid_until
-                    ).toLocaleDateString("tr-TR")}
+                    ).toLocaleDateString(
+                      "tr-TR"
+                    )}
                   </p>
                 )}
               </div>
@@ -320,14 +514,18 @@ export default function OfferDetailPage({
                         ₺
                         {Number(
                           item.unit_price
-                        ).toLocaleString("tr-TR")}
+                        ).toLocaleString(
+                          "tr-TR"
+                        )}
                       </td>
 
                       <td className="p-3 text-center font-semibold">
                         ₺
                         {Number(
                           item.total_price
-                        ).toLocaleString("tr-TR")}
+                        ).toLocaleString(
+                          "tr-TR"
+                        )}
                       </td>
                     </tr>
                   ))}
