@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Navbar from "./components/Navbar";
 
 export default function Home() {
@@ -15,9 +16,12 @@ export default function Home() {
             Yapay zekâ destekli teklif oluşturma sistemi
           </p>
 
-          <button className="w-full mt-8 bg-green-600 hover:bg-blue-700 text-white py-3 rounded-xl">
+          <Link
+            href="/offers/list"
+            className="block w-full mt-8 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl text-center"
+          >
             Başlayalım
-          </button>
+          </Link>
         </div>
       </main>
     </>

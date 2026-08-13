@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
+
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 
@@ -12,23 +13,29 @@ export default function NewCustomer() {
   const [email, setEmail] = useState("");
 
   const saveCustomer = async () => {
+    if (!name.trim()) {
+      alert("Lütfen müşteri adını girin.");
+      return;
+    }
+
     const { error } = await supabase.from("customers").insert({
-      name,
-      company,
-      phone,
-      email,
+      name: name.trim(),
+      company: company.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
     });
 
     if (error) {
       alert("Hata: " + error.message);
-    } else {
-      alert("✅ Müşteri başarıyla kaydedildi!");
-
-      setName("");
-      setCompany("");
-      setPhone("");
-      setEmail("");
+      return;
     }
+
+    alert("✅ Müşteri başarıyla kaydedildi!");
+
+    setName("");
+    setCompany("");
+    setPhone("");
+    setEmail("");
   };
 
   return (
@@ -44,7 +51,6 @@ export default function NewCustomer() {
           </h1>
 
           <div className="bg-white rounded-xl shadow p-8 max-w-xl">
-
             <div className="mb-4">
               <label className="block font-semibold mb-2">
                 Ad Soyad
@@ -55,6 +61,7 @@ export default function NewCustomer() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full border rounded-lg p-3"
+                placeholder="Müşteri adı"
               />
             </div>
 
@@ -68,6 +75,7 @@ export default function NewCustomer() {
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
                 className="w-full border rounded-lg p-3"
+                placeholder="Firma adı"
               />
             </div>
 
@@ -81,6 +89,7 @@ export default function NewCustomer() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full border rounded-lg p-3"
+                placeholder="Telefon"
               />
             </div>
 
@@ -94,16 +103,17 @@ export default function NewCustomer() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full border rounded-lg p-3"
+                placeholder="E-posta"
               />
             </div>
 
             <button
+              type="button"
               onClick={saveCustomer}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg"
             >
               Müşteriyi Kaydet
             </button>
-
           </div>
         </main>
       </div>
